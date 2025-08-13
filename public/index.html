@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Virtual Secondary Throttle Plate Simulator</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        background: #111;
+        color: #eee;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+      }
+      .controls,
+      .map,
+      .readouts {
+        display: flex;
+        gap: 1rem;
+      }
+      .map {
+        display: grid;
+        grid-template-columns: repeat(12, 50px);
+        gap: 1px;
+      }
+      .map div {
+        width: 50px;
+        height: 30px;
+        text-align: center;
+        line-height: 30px;
+        border: 1px solid #444;
+        background: #222;
+      }
+      .map .header {
+        font-weight: bold;
+        background: #333;
+      }
+      .map .active-rpm {
+        border: 2px solid red;
+      }
+      .map .active-tps {
+        border: 2px solid blue;
+      }
+      .map .active-cell {
+        background: lime;
+        color: black;
+      }
+      .map-section {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .controls-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        max-width: 800px;
+        margin-bottom: 1.5rem;
+      }
+      .mode-switch {
+        display: flex;
+        gap: 0.5rem;
+      }
+      .mode-btn {
+        padding: 4px 10px;
+        background: #222;
+        color: #eee;
+        border: 1px solid #444;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .mode-btn.active {
+        background: #00cfff;
+        color: #111;
+        border-color: #00cfff;
+      }
+      .rpm-input-section {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .rpm-input-label {
+        font-size: 14px;
+        color: #aaa;
+        font-weight: bold;
+      }
+      .rpm-input {
+        padding: 8px 12px;
+        background: #222;
+        color: #eee;
+        border: 2px solid #444;
+        border-radius: 6px;
+        font-size: 16px;
+        font-weight: bold;
+        text-align: center;
+        width: 120px;
+        transition: border-color 0.2s;
+      }
+      .rpm-input:focus {
+        outline: none;
+        border-color: #00cfff;
+        box-shadow: 0 0 5px rgba(0, 207, 255, 0.3);
+      }
+      .gear-selector {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        justify-content: center;
+      }
+      .gear-btn {
+        padding: 8px 12px;
+        background: #222;
+        color: #eee;
+        border: 2px solid #444;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 14px;
+        min-width: 40px;
+        transition: all 0.2s;
+      }
+      .gear-btn.active {
+        background: #ff6600;
+        color: #111;
+        border-color: #ff6600;
+        box-shadow: 0 0 5px rgba(255, 102, 0, 0.3);
+      }
+      .gear-btn:hover:not(.active) {
+        border-color: #666;
+      }
+
+      .tps-arc {
+        position: relative;
+        width: 100px;
+        height: 50px;
+        background: conic-gradient(from 180deg, lime 0deg, #333 0deg);
+        border-top-left-radius: 100px;
+        border-top-right-radius: 100px;
+        overflow: hidden;
+        margin-top: 1rem;
+      }
+      .tps-arc-inner {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        right: 8px;
+        bottom: -50%;
+        background: #111;
+        border-top-left-radius: 100px;
+        border-top-right-radius: 100px;
+        z-index: 2;
+      }
+      /* TPS stepper controls */
+      .tps-controls {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+      .tps-stepper {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        user-select: none;
+      }
+      .tps-step-label {
+        font-size: 12px;
+        color: #aaa;
+        letter-spacing: 0.5px;
+      }
+      .tps-btn {
+        padding: 4px 10px;
+        background: #222;
+        color: #eee;
+        border: 1px solid #444;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 14px;
+        line-height: 1;
+        width: 36px;
+        text-align: center;
+        transition: border-color 0.2s, background 0.2s;
+      }
+      .tps-btn:hover {
+        border-color: #666;
+      }
+      .airflow-container {
+        position: relative;
+        width: 100%;
+        height: 200px;
+        margin: 2rem 0;
+        overflow: hidden;
+        background: linear-gradient(90deg, #1a1a1a 0%, #111 50%, #1a1a1a 100%);
+        border: 1px solid #444;
+        border-radius: 10px;
+      }
+      .airflow-container::before {
+        content: "AIR FLOW →";
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        color: #00cfff;
+        font-size: 12px;
+        font-weight: bold;
+        z-index: 3;
+      }
+      .airflow-container::after {
+        content: "← INTAKE";
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        color: #00ff00;
+        font-size: 12px;
+        font-weight: bold;
+        z-index: 3;
+      }
+      .airflow-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+      }
+      .throttle-body-inline {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 2;
+      }
+      .throttle-body-inline .plate {
+        width: 160px;
+        height: 160px;
+        background: #00000011;
+        border: 4px solid #888;
+        border-radius: 50%;
+        position: relative;
+      }
+      .throttle-body-inline .valve {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 100%;
+        height: 6px;
+        transform-origin: center center;
+        transform: translate(-50%, -50%) rotate(0deg);
+        background: #00cfff;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Secondary Throttle Plate Simulator</h1>
+    <div class="readouts">
+      <div>TPS: <span id="tpsVal">0%</span></div>
+      <div>Secondary Plate Open: <span id="secondaryVal">0%</span></div>
+    </div>
+    <div class="airflow-container">
+      <canvas class="airflow-canvas" id="airflowCanvas"></canvas>
+      <div class="throttle-body-inline">
+        <div class="plate">
+          <div class="valve secondary" id="secondaryValveInline"></div>
+        </div>
+      </div>
+    </div>
+    <div class="map-section">
+      <div class="gear-selector">
+        <button id="gear1Btn" class="gear-btn">1</button>
+        <button id="gearNBtn" class="gear-btn active">N</button>
+        <button id="gear2Btn" class="gear-btn">2</button>
+        <button id="gear3Btn" class="gear-btn">3</button>
+        <button id="gear4Btn" class="gear-btn">4</button>
+        <button id="gear5Btn" class="gear-btn">5</button>
+        <button id="gear6Btn" class="gear-btn">6</button>
+      </div>
+      <div class="controls-row">
+        <div class="mode-switch">
+          <button id="modeSportBtn" class="mode-btn active">SPORT</button>
+          <button id="modeRainBtn" class="mode-btn">RAIN</button>
+        </div>
+        <div class="tps-controls">
+          <div class="tps-arc" id="tpsArc">
+            <div class="tps-arc-inner"></div>
+          </div>
+          <div class="tps-stepper">
+            <button id="tpsDecBtn" class="tps-btn">-</button>
+            <div class="tps-step-label">TPS step 10%</div>
+            <button id="tpsIncBtn" class="tps-btn">+</button>
+          </div>
+        </div>
+        <div class="rpm-input-section">
+          <div class="rpm-input-label">ENGINE RPM</div>
+          <input
+            id="rpmInput"
+            class="rpm-input"
+            type="number"
+            value="0"
+            min="0"
+            max="10000"
+            step="1000"
+            placeholder="0"
+          />
+        </div>
+      </div>
+      <div class="map" id="mapGrid"></div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const mapDataModes = {
+        SPORT: "SPORT",
+        RAIN: "RAIN",
+      };
+
+      const gears = ["1", "N", "2", "3", "4", "5", "6"];
+      let currentGear = "N";
+      let currentMode = mapDataModes.SPORT;
+
+      const generateGearMap = (gear, mode) => {
+        const map = {};
+
+        // Base multipliers for each gear (how aggressive the throttle response is)
+        const gearMultipliers = {
+          1: 0.3, // Very conservative for 1st gear
+          N: 0.3, // Neutral - same as 1st gear
+          2: 0.5, // Conservative for 2nd gear
+          3: 0.7, // Moderate for 3rd gear
+          4: 0.85, // More aggressive for 4th gear
+          5: 0.95, // Near full response for 5th gear
+          6: 1.0, // Full response for 6th gear (highway)
+        };
+
+        const baseMultiplier = gearMultipliers[gear] || 0;
+        const modeMultiplier = mode === mapDataModes.RAIN ? 0.7 : 1.0;
+        const finalMultiplier = baseMultiplier * modeMultiplier;
+
+        for (let rpm = 0; rpm <= 10000; rpm += 1000) {
+          map[rpm] = {};
+          for (let tps = 0; tps <= 100; tps += 10) {
+            const baseValue = (tps / 100) * ((rpm / 10000) * 100);
+            let finalValue = Math.floor(baseValue * finalMultiplier);
+
+            // Apply rain mode cap
+            if (mode === mapDataModes.RAIN) {
+              finalValue = Math.min(60, finalValue);
+            }
+
+            // Ensure no gear can exceed 100% throttle opening
+            map[rpm][tps] = Math.max(0, Math.min(100, finalValue));
+          }
+        }
+        return map;
+      };
+
+      const getActiveMap = () => generateGearMap(currentGear, currentMode);
+
+      const rpmInput = document.getElementById("rpmInput");
+      const modeSportBtn = document.getElementById("modeSportBtn");
+      const modeRainBtn = document.getElementById("modeRainBtn");
+
+      // Gear button references
+      const gear1Btn = document.getElementById("gear1Btn");
+      const gearNBtn = document.getElementById("gearNBtn");
+      const gear2Btn = document.getElementById("gear2Btn");
+      const gear3Btn = document.getElementById("gear3Btn");
+      const gear4Btn = document.getElementById("gear4Btn");
+      const gear5Btn = document.getElementById("gear5Btn");
+      const gear6Btn = document.getElementById("gear6Btn");
+
+      const gearButtons = [
+        gear1Btn,
+        gearNBtn,
+        gear2Btn,
+        gear3Btn,
+        gear4Btn,
+        gear5Btn,
+        gear6Btn,
+      ];
+      const tpsVal = document.getElementById("tpsVal");
+      const secondaryVal = document.getElementById("secondaryVal");
+      const mapGrid = document.getElementById("mapGrid");
+      const tpsArc = document.getElementById("tpsArc");
+      const airflowCanvas = document.getElementById("airflowCanvas");
+      const ctx = airflowCanvas.getContext("2d");
+      const tpsIncBtn = document.getElementById("tpsIncBtn");
+      const tpsDecBtn = document.getElementById("tpsDecBtn");
+      let currentTPS = 0;
+      let currentSecondaryOpen = 0;
+
+      // Airflow particle system
+      const particles = [];
+      const maxParticles = 2000;
+
+      // Set canvas size
+      const resizeCanvas = () => {
+        const container = airflowCanvas.parentElement;
+        airflowCanvas.width = container.clientWidth;
+        airflowCanvas.height = container.clientHeight;
+      };
+
+      class Particle {
+        constructor() {
+          this.reset();
+          this.x = Math.random() * 100; // Start particles across the right edge initially
+        }
+
+        reset() {
+          this.x = airflowCanvas.width + 10;
+          this.y = airflowCanvas.height / 2 + (Math.random() - 0.5) * 80; // Even wider spread
+          this.vx = -2.0 - Math.random() * 1.5; // More consistent speeds
+          this.vy = (Math.random() - 0.5) * 0.3; // Smaller initial vertical movement
+          this.size = 1.0 + Math.random() * 1.2;
+          this.opacity = 0.5 + Math.random() * 0.3; // More consistent opacity
+          this.throughThrottle = false;
+          this.hasDecided = false; // Track if particle has decided its path
+        }
+
+        update() {
+          const throttleX = airflowCanvas.width / 2;
+          const throttleY = airflowCanvas.height / 2;
+          const throttleRadius = 80;
+
+          // Distance to throttle center
+          const dx = this.x - throttleX;
+          const dy = this.y - throttleY;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          // Check if particle is at the throttle plate position
+          if (Math.abs(dx) < 5 && distance < throttleRadius) {
+            const openPercent = currentSecondaryOpen / 100;
+
+            // Simple 1:1 mapping: throttle percentage = particle pass-through percentage
+            if (!this.hasDecided) {
+              if (Math.random() < openPercent) {
+                // Particle goes through the opening - gets absorbed
+                this.throughThrottle = true;
+                this.hasDecided = true;
+                // Continue through and will be removed when it passes throttle center
+              } else {
+                // Particle hits the solid plate - bounces off
+                this.throughThrottle = false;
+                this.hasDecided = true;
+                this.vx = Math.abs(this.vx) * 0.6; // Reverse direction and lose energy
+                this.vy += (dy > 0 ? 1 : -1) * Math.abs(this.vx) * 0.5; // Deflect up or down
+                this.vy += (Math.random() - 0.5) * 1; // Add randomness
+              }
+            }
+          }
+
+          // Vacuum effect when approaching throttle (stronger when more open)
+          if (dx > 0 && dx < 80 && Math.abs(dy) < 100 && !this.hasDecided) {
+            const openPercent = currentSecondaryOpen / 100;
+            const vacuumForce = 0.001 + openPercent * 0.003;
+            this.vy += (throttleY - this.y) * vacuumForce;
+            if (openPercent > 0.3) {
+              this.vx *= 1.002; // Slight speed increase toward throttle
+            }
+          }
+
+          this.x += this.vx;
+          this.y += this.vy;
+
+          // Add some turbulence (reduced for more constant flow)
+          if (!this.hasDecided || this.throughThrottle) {
+            this.vy += (Math.random() - 0.5) * 0.05;
+            this.vy *= 0.99; // Less damping for more consistent flow
+          }
+
+          // If particle went through throttle, concentrate it into engine intake stream
+          if (this.throughThrottle && this.x < throttleX - 10) {
+            // Strong suction toward center line for engine intake
+            const intakeY = throttleY; // Center line of intake
+            const suctionForce = 0.15;
+            this.vy += (intakeY - this.y) * suctionForce;
+
+            // Speed up significantly in the intake stream
+            this.vx *= 1.05;
+
+            // Add slight intake stream turbulence
+            this.vy += (Math.random() - 0.5) * 0.02;
+          }
+
+          // Reset if off screen (including bounced particles that go backwards)
+          if (this.x < -20 || this.x > airflowCanvas.width + 50) {
+            this.reset();
+          }
+        }
+
+        draw() {
+          ctx.save();
+          ctx.globalAlpha = this.opacity;
+
+          // Color particles based on their actual interaction with the plate
+          if (this.hasDecided) {
+            if (this.throughThrottle) {
+              ctx.fillStyle = "#00ff00"; // Green for particles that passed through opening
+            } else {
+              ctx.fillStyle = "#ff4444"; // Red for particles that bounced off plate
+            }
+          } else {
+            ctx.fillStyle = "#00cfff"; // Blue for particles still approaching
+          }
+
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Add a small tail effect with matching color
+          ctx.globalAlpha = this.opacity * 0.3;
+          if (this.hasDecided) {
+            if (this.throughThrottle) {
+              ctx.fillStyle = "#88ff88"; // Light green tail for absorbed particles
+            } else {
+              ctx.fillStyle = "#ff8888"; // Light red tail for bounced particles
+            }
+          } else {
+            ctx.fillStyle = "#ffffff"; // White tail for approaching particles
+          }
+          ctx.beginPath();
+          ctx.arc(
+            this.x + this.vx * 2,
+            this.y + this.vy * 2,
+            this.size * 0.5,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      // Initialize particles
+      for (let i = 0; i < maxParticles; i++) {
+        particles.push(new Particle());
+      }
+
+      const animateAirflow = () => {
+        ctx.clearRect(0, 0, airflowCanvas.width, airflowCanvas.height);
+
+        particles.forEach((particle) => {
+          particle.update();
+          particle.draw();
+        });
+
+        requestAnimationFrame(animateAirflow);
+      };
+
+      // Initialize canvas and start animation
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+      animateAirflow();
+
+      const buildMap = () => {
+        mapGrid.innerHTML = "";
+        mapGrid.appendChild(document.createElement("div"));
+        for (let tps = 0; tps <= 100; tps += 10) {
+          const div = document.createElement("div");
+          div.classList.add("header");
+          div.textContent = `${tps}%`;
+          mapGrid.appendChild(div);
+        }
+
+        for (let rpm = 0; rpm <= 10000; rpm += 1000) {
+          const rpmLabel = document.createElement("div");
+          rpmLabel.classList.add("header");
+          rpmLabel.textContent = `${rpm}`;
+          mapGrid.appendChild(rpmLabel);
+
+          for (let tps = 0; tps <= 100; tps += 10) {
+            const cell = document.createElement("div");
+            cell.dataset.rpm = rpm;
+            cell.dataset.tps = tps;
+            cell.textContent = getActiveMap()[rpm][tps];
+            mapGrid.appendChild(cell);
+          }
+        }
+      };
+
+      const update = () => {
+        const rpm = parseInt(rpmInput.value);
+        const nearestRPM = Math.round(rpm / 1000) * 1000;
+        const nearestTPS = Math.round(currentTPS / 10) * 10;
+        const activeMap = getActiveMap();
+        const secondaryOpen = activeMap[nearestRPM]?.[nearestTPS] ?? 0;
+
+        tpsVal.textContent = `${nearestTPS}%`;
+        secondaryVal.textContent = `${secondaryOpen}%`;
+
+        // Update the airflow system
+        currentSecondaryOpen = secondaryOpen;
+
+        document.querySelectorAll(".map div").forEach((cell) => {
+          cell.classList.remove("active-rpm", "active-tps", "active-cell");
+          if (
+            cell.dataset.rpm == nearestRPM &&
+            !cell.classList.contains("header")
+          )
+            cell.classList.add("active-rpm");
+          if (
+            cell.dataset.tps == nearestTPS &&
+            !cell.classList.contains("header")
+          )
+            cell.classList.add("active-tps");
+          if (cell.dataset.rpm == nearestRPM && cell.dataset.tps == nearestTPS)
+            cell.classList.add("active-cell");
+        });
+
+        const valveRotation = `translate(-50%, -50%) rotate(${
+          90 - secondaryOpen * 0.9
+        }deg)`;
+
+        document.getElementById("secondaryValveInline").style.transform =
+          valveRotation;
+
+        const tpsAngle = (nearestTPS / 100) * 180;
+        tpsArc.style.background = `conic-gradient(from 180deg, lime 0deg ${
+          tpsAngle * 1.8
+        }deg, #333 ${tpsAngle * 1.8}deg 180deg)`;
+      };
+
+      buildMap();
+      update();
+      rpmInput.addEventListener("input", update);
+
+      // TPS stepper handlers (increments/decrements by 10%)
+      const setTPS = (value) => {
+        currentTPS = Math.max(0, Math.min(100, value));
+        update();
+      };
+      tpsIncBtn.addEventListener("click", () =>
+        setTPS(Math.round(currentTPS / 10) * 10 + 10)
+      );
+      tpsDecBtn.addEventListener("click", () =>
+        setTPS(Math.round(currentTPS / 10) * 10 - 10)
+      );
+
+      // Gear selection handlers
+      const setGear = (gear) => {
+        currentGear = gear;
+        gearButtons.forEach((btn, index) => {
+          btn.classList.toggle("active", gears[index] === gear);
+        });
+        buildMap();
+        update();
+      };
+
+      // Mode switch handlers
+      const setMode = (mode) => {
+        currentMode = mode;
+        modeSportBtn.classList.toggle("active", mode === mapDataModes.SPORT);
+        modeRainBtn.classList.toggle("active", mode === mapDataModes.RAIN);
+        buildMap();
+        update();
+      };
+
+      // Event listeners
+      gear1Btn.addEventListener("click", () => setGear("1"));
+      gearNBtn.addEventListener("click", () => setGear("N"));
+      gear2Btn.addEventListener("click", () => setGear("2"));
+      gear3Btn.addEventListener("click", () => setGear("3"));
+      gear4Btn.addEventListener("click", () => setGear("4"));
+      gear5Btn.addEventListener("click", () => setGear("5"));
+      gear6Btn.addEventListener("click", () => setGear("6"));
+
+      modeSportBtn.addEventListener("click", () => setMode(mapDataModes.SPORT));
+      modeRainBtn.addEventListener("click", () => setMode(mapDataModes.RAIN));
+
+      const socket = io();
+      socket.on("tps", (val) => {
+        currentTPS = val;
+        update();
+      });
+    </script>
+  </body>
+</html>
